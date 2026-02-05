@@ -1,0 +1,31 @@
+collection:
+  interval: 15s
+  retention_days: 90
+
+storage:
+  path: /var/lib/instvisor/metrics.db
+
+collectors:
+  cpu:
+    enabled: true
+    per_core: true
+  
+  memory:
+    enabled: true
+    include_swap: true
+  
+  disk:
+    enabled: true
+    devices: []  # Empty = all devices, or specify like: ["sda", "nvme0n1"]
+  
+  network:
+    enabled: true
+    interfaces: []  # Empty = all interfaces, or specify like: ["eth0", "ens3"]
+  
+  process:
+    enabled: false  # Not yet implemented
+    top_n: 10
+
+server:
+  enabled: false
+  port: 9090
