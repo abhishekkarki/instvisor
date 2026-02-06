@@ -34,3 +34,13 @@ run: build
 dev: build
 	@echo "Running in development mode..."
 	./$(BUILD_DIR)/$(BINARY_NAME) -config configs/agent.yaml
+
+build-analyze:
+	@echo "Building analyze tool..."
+	@mkdir -p $(BUILD_DIR)
+	go build -o $(BUILD_DIR)/instvisor-analyze ./cmd/analyze
+
+build-all: build build-analyze
+
+analyze: build-analyze
+	./$(BUILD_DIR)/instvisor-analyze -db /tmp/instvisor-test/metrics.db -days 1
