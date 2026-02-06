@@ -11,15 +11,25 @@ import (
 )
 
 var (
-	dbPath     = flag.String("db", "/var/lib/instvisor/metrics.db", "Path to metrics database")
-	days       = flag.Int("days", 7, "Number of days to analyze")
-	currentCPU = flag.Int("current-cpu", 0, "Current number of vCPUs (optional)")
-	currentMem = flag.Float64("current-mem", 0, "Current memory in GB (optional)")
-	format     = flag.String("format", "text", "Output format: text, json")
+	dbPath      = flag.String("db", "/var/lib/instvisor/metrics.db", "Path to metrics database")
+	days        = flag.Int("days", 7, "Number of days to analyze")
+	currentCPU  = flag.Int("current-cpu", 0, "Current number of vCPUs (0=auto-detect)")
+	currentMem  = flag.Float64("current-mem", 0, "Current memory in GB (0=auto-detect)")
+	format      = flag.String("format", "text", "Output format: text, json")
+	headroomCPU = flag.Float64("headroom-cpu", 20, "CPU headroom percentage")
+	headroomMem = flag.Float64("headroom-mem", 15, "Memory headroom percentage")
 )
 
 func main() {
 	flag.Parse()
+
+	// Detect system info
+	sysInfo, err := analyzer.DetectSystemInfo()
+	if err != nil {
+		log.Printf("Warning: Could not detect system info: %v", err)
+	} else {
+		fmt.Printf("Current System: %s\n\n", sysInfo)
+	}
 
 	// Open storage
 	store, err := storage.NewSQLiteStorage(*dbPath)
@@ -45,12 +55,24 @@ func main() {
 
 	// Generate recommendation
 	rec := analyzer.NewRecommender(an)
+
+	// Use detected values if not provided
+	cpuCores := *currentCPU
+	memGB := *currentMem
+
+	if cpuCores == 0 && sysInfo != nil {
+		cpuCores = sysInfo.CPUCores
+	}
+	if memGB == 0 && sysInfo != nil {
+		memGB = sysInfo.MemoryGB
+	}
+
 	config := &analyzer.RecommendationConfig{
-		CPUHeadroomPercent:    20,
-		MemoryHeadroomPercent: 15,
+		CPUHeadroomPercent:    *headroomCPU,
+		MemoryHeadroomPercent: *headroomMem,
 		UseP95:                true,
-		CurrentCPUCores:       *currentCPU,
-		CurrentMemoryGB:       *currentMem,
+		CurrentCPUCores:       cpuCores,
+		CurrentMemoryGB:       memGB,
 	}
 
 	recommendation, err := rec.GenerateRecommendation(analysis, config)
@@ -59,7 +81,7 @@ func main() {
 	}
 
 	// Print recommendation
-	printRecommendation(recommendation)
+	printRecommendation(recommendation, cpuCores, memGB)
 }
 
 func printAnalysis(analysis *analyzer.ResourceAnalysis) {
@@ -76,7 +98,8 @@ func printAnalysis(analysis *analyzer.ResourceAnalysis) {
 		fmt.Printf("  P95:    %.1f%%\n", analysis.CPU.P95)
 		fmt.Printf("  P99:    %.1f%%\n", analysis.CPU.P99)
 		fmt.Printf("  Max:    %.1f%%\n", analysis.CPU.Max)
-		fmt.Printf("  StdDev: %.1f\n", analysis.CPU.StdDev)
+		fmt.Printf("  StdDev: %.1f%%\n", analysis.CPU.StdDev)
+		fmt.Printf("  Samples: %d\n", analysis.CPU.Samples)
 		fmt.Println()
 	}
 
@@ -88,6 +111,15 @@ func printAnalysis(analysis *analyzer.ResourceAnalysis) {
 		fmt.Printf("  P95:    %.1f%%\n", analysis.Memory.P95)
 		fmt.Printf("  P99:    %.1f%%\n", analysis.Memory.P99)
 		fmt.Printf("  Max:    %.1f%%\n", analysis.Memory.Max)
+		fmt.Printf("  Samples: %d\n", analysis.Memory.Samples)
+		fmt.Println()
+	}
+
+	if analysis.Disk != nil {
+		fmt.Println("Disk I/O:")
+		fmt.Printf("  Mean:   %.1f%%\n", analysis.Disk.Mean)
+		fmt.Printf("  P95:    %.1f%%\n", analysis.Disk.P95)
+		fmt.Printf("  Max:    %.1f%%\n", analysis.Disk.Max)
 		fmt.Println()
 	}
 
@@ -100,17 +132,43 @@ func printAnalysis(analysis *analyzer.ResourceAnalysis) {
 	}
 }
 
-func printRecommendation(rec *analyzer.InstanceRecommendation) {
+func printRecommendation(rec *analyzer.InstanceRecommendation, currentCPU int, currentMem float64) {
 	fmt.Println("=== INSTANCE SIZING RECOMMENDATION ===")
 	fmt.Println()
 
+	if currentCPU > 0 && currentMem > 0 {
+		fmt.Println("Current Configuration:")
+		fmt.Printf("  vCPUs:  %d cores\n", currentCPU)
+		fmt.Printf("  Memory: %.1f GB\n", currentMem)
+		fmt.Println()
+	}
+
 	fmt.Println("Recommended Configuration:")
-	fmt.Printf("  vCPUs:  %d cores\n", rec.RecommendedCPU)
-	fmt.Printf("  Memory: %.1f GB\n", rec.RecommendedMemory)
+	fmt.Printf("  vCPUs:  %d cores", rec.RecommendedCPU)
+	if currentCPU > 0 {
+		diff := rec.RecommendedCPU - currentCPU
+		if diff < 0 {
+			fmt.Printf(" (-%d cores)", -diff)
+		} else if diff > 0 {
+			fmt.Printf(" (+%d cores)", diff)
+		}
+	}
+	fmt.Println()
+
+	fmt.Printf("  Memory: %.1f GB", rec.RecommendedMemory)
+	if currentMem > 0 {
+		diff := rec.RecommendedMemory - currentMem
+		if diff < 0 {
+			fmt.Printf(" (-%.1f GB)", -diff)
+		} else if diff > 0 {
+			fmt.Printf(" (+%.1f GB)", diff)
+		}
+	}
+	fmt.Println()
 	fmt.Println()
 
 	if rec.EstimatedSavings > 0 {
-		fmt.Printf("Estimated Savings: %.0f%%\n\n", rec.EstimatedSavings)
+		fmt.Printf("💰 Estimated Resource Savings: %.0f%%\n\n", rec.EstimatedSavings)
 	}
 
 	fmt.Println("Rationale:")
