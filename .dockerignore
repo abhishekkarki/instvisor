@@ -1,0 +1,24 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+LICENSE
+docs/
+
+# Build artifacts
+build/
+*.db
+
+# IDE
+.idea/
+.vscode/
+
+# Test files
+*_test.go
+coverage.out
+
+# CI
+.github/
