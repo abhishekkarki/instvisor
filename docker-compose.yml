@@ -1,0 +1,22 @@
+services:
+  instvisor:
+    build: .
+    image: abhishekkarki/instvisor:latest
+    container_name: instvisor
+    privileged: true
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - instvisor-data:/var/lib/instvisor
+      - ./configs/agent.yaml:/etc/instvisor/agent.yaml:ro
+    ports:
+      - "9090:9090"
+    environment:
+      - TZ=Europe/Berlin
+
+volumes:
+  instvisor-data:
