@@ -1,0 +1,30 @@
+[Unit]
+Description=Instvisor Resource Monitoring Agent
+Documentation=https://github.com/abhishekkarki/instvisor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=instvisor
+Group=instvisor
+ExecStart=/usr/local/bin/instvisor-agent -config /etc/instvisor/agent.yaml
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=instvisor
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/instvisor
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=512
+
+[Install]
+WantedBy=multi-user.target
