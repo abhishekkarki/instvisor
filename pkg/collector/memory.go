@@ -3,6 +3,7 @@ package collector
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -38,7 +39,12 @@ func (m *MemoryCollector) Collect() ([]metrics.Metric, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open /proc/meminfo: %w", err)
 	}
-	defer file.Close()
+
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("Failed to close file: %v", err)
+		}
+	}()
 
 	memInfo := make(map[string]uint64)
 	scanner := bufio.NewScanner(file)

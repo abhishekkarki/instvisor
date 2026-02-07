@@ -3,6 +3,7 @@ package collector
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -47,7 +48,12 @@ func (d *DiskCollector) Collect() ([]metrics.Metric, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open /proc/diskstats: %w", err)
 	}
-	defer file.Close()
+
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("Failed to close /proc/diskstats: %v", err)
+		}
+	}()
 
 	var result []metrics.Metric
 	scanner := bufio.NewScanner(file)

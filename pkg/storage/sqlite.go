@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/abhishekkarki/instvisor/pkg/metrics"
@@ -69,7 +70,13 @@ func (s *SQLiteStorage) WriteMetrics(metricsData []metrics.Metric) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+			// ErrTxDone means transaction was already committed, which is fine
+			// Only log other errors
+			log.Printf("failed to rollback transaction: %v", err)
+		}
+	}()
 
 	stmt, err := tx.Prepare(`
         INSERT INTO metrics (timestamp, metric_name, value, labels, unit)
@@ -78,7 +85,12 @@ func (s *SQLiteStorage) WriteMetrics(metricsData []metrics.Metric) error {
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close()
+
+	defer func() {
+		if err := stmt.Close(); err != nil {
+			log.Printf("Failed to close statement: %v", err)
+		}
+	}()
 
 	for _, m := range metricsData {
 		labelsJSON, err := json.Marshal(m.Labels)
@@ -113,7 +125,12 @@ func (s *SQLiteStorage) QueryMetrics(name string, start, end time.Time, labels m
 	if err != nil {
 		return nil, fmt.Errorf("failed to query metrics: %w", err)
 	}
-	defer rows.Close()
+
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Failed to close rows: %v", err)
+		}
+	}()
 
 	var result []metrics.Metric
 	for rows.Next() {

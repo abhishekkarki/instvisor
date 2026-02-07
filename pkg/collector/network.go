@@ -3,6 +3,7 @@ package collector
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -50,7 +51,11 @@ func (n *NetworkCollector) Collect() ([]metrics.Metric, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open /proc/net/dev: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("Failed to close file: %v", err)
+		}
+	}()
 
 	var result []metrics.Metric
 	scanner := bufio.NewScanner(file)

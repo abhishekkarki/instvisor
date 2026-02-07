@@ -3,6 +3,7 @@ package analyzer
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"runtime"
 	"strconv"
@@ -46,7 +47,12 @@ func getTotalMemoryGB() (float64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer file.Close()
+
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("Failed to close file: %v", err)
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
