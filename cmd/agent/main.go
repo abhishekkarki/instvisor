@@ -42,7 +42,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize storage: %v", err)
 	}
-	defer store.Close()
+
+	defer func() {
+		if err := store.Close(); err != nil {
+			log.Printf("Failed to close storage: %v", err)
+		}
+	}()
 
 	log.Printf("Storage initialized at: %s", cfg.Storage.Path)
 

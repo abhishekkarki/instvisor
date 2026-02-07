@@ -15,7 +15,6 @@ var (
 	days        = flag.Int("days", 7, "Number of days to analyze")
 	currentCPU  = flag.Int("current-cpu", 0, "Current number of vCPUs (0=auto-detect)")
 	currentMem  = flag.Float64("current-mem", 0, "Current memory in GB (0=auto-detect)")
-	format      = flag.String("format", "text", "Output format: text, json")
 	headroomCPU = flag.Float64("headroom-cpu", 20, "CPU headroom percentage")
 	headroomMem = flag.Float64("headroom-mem", 15, "Memory headroom percentage")
 )
@@ -36,7 +35,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
 	}
-	defer store.Close()
+
+	defer func() {
+		if err := store.Close(); err != nil {
+			log.Printf("Failed to close storage: %v", err)
+		}
+	}()
 
 	// Create analyzer
 	an := analyzer.NewAnalyzer(store)
