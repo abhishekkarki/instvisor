@@ -4,11 +4,11 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
+| 0.1.0   | :white_check_mark: |
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability, please email security@your-domain.com or open a private security advisory on GitHub.
+If you discover a security vulnerability, please email abhishekkarki@gmail.com or open a private security advisory on GitHub.
 
 **Please do not open public issues for security vulnerabilities.**
 
