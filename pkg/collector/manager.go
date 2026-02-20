@@ -54,6 +54,11 @@ func NewManager(cfg *config.Config, store storage.Storage) (*Manager, error) {
 			NewNetworkCollector(cfg.Collection.Interval, cfg.Collectors.Network.Interfaces))
 	}
 
+	if cfg.Collectors.Container.Enabled {
+		containerCollector := NewContainerCollector(cfg.Collection.Interval)
+		manager.collectors = append(manager.collectors, containerCollector)
+	}
+
 	if len(manager.collectors) == 0 {
 		return nil, fmt.Errorf("no collectors enabled")
 	}

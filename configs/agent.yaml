@@ -25,6 +25,9 @@ collectors:
   process:
     enabled: false  # Not yet implemented
     top_n: 10
+  
+  container:
+    enabled: true
 
 server:
   enabled: false

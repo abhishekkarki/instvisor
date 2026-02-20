@@ -9,13 +9,13 @@ Similar to cAdvisor for containers, Instvisor monitors your entire host and help
 
 ## Features
 
-- 🔍 **Comprehensive Metrics Collection**: CPU, Memory, Disk I/O, Network
-- 📊 **Statistical Analysis**: P50/P90/P95/P99 percentiles, workload pattern detection
-- 💰 **Cost Optimization**: Instance sizing recommendations for AWS, OTC, Azure
-- 🎯 **Low Overhead**: <50MB RAM, <1% CPU usage
-- 💾 **SQLite Storage**: Efficient time-series data with configurable retention
-- 🐳 **Container Support**: Run as systemd service or Docker container
-- 📈 **Prometheus Ready**: Export metrics to existing monitoring stack (coming soon)
+- **Comprehensive Metrics Collection**: CPU, Memory, Disk I/O, Network
+- **Statistical Analysis**: P50/P90/P95/P99 percentiles, workload pattern detection
+- **Cost Optimization**: Instance sizing recommendations for AWS, OTC, Azure
+- **Low Overhead**: <50MB RAM, <1% CPU usage
+- **SQLite Storage**: Efficient time-series data with configurable retention
+- **Container Support**: Run as systemd service or Docker container
+- **Prometheus Ready**: Export metrics to existing monitoring stack (coming soon)
 
 ## Quick Start
 
@@ -114,7 +114,7 @@ Recommended Configuration:
   vCPUs:  4 cores (-4 cores)
   Memory: 16.0 GB (-16.0 GB)
 
-💰 Estimated Resource Savings: 50%
+Estimated Resource Savings: 50%
 
 Suggested Instance Types:
   AWS: [m5.xlarge, c5.xlarge]

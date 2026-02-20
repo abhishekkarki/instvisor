@@ -26,11 +26,12 @@ type StorageConfig struct {
 }
 
 type CollectorsConfig struct {
-	CPU     CPUCollectorConfig     `yaml:"cpu"`
-	Memory  MemoryCollectorConfig  `yaml:"memory"`
-	Disk    DiskCollectorConfig    `yaml:"disk"`
-	Network NetworkCollectorConfig `yaml:"network"`
-	Process ProcessCollectorConfig `yaml:"process"`
+	CPU       CPUCollectorConfig       `yaml:"cpu"`
+	Memory    MemoryCollectorConfig    `yaml:"memory"`
+	Disk      DiskCollectorConfig      `yaml:"disk"`
+	Network   NetworkCollectorConfig   `yaml:"network"`
+	Process   ProcessCollectorConfig   `yaml:"process"`
+	Container ContainerCollectorConfig `yaml:"container"`
 }
 
 type CPUCollectorConfig struct {
@@ -61,6 +62,10 @@ type ProcessCollectorConfig struct {
 type ServerConfig struct {
 	Enabled bool `yaml:"enabled"`
 	Port    int  `yaml:"port"`
+}
+
+type ContainerCollectorConfig struct {
+	Enabled bool `yaml:"enabled"`
 }
 
 // LoadConfig loads configuration from a YAML file
@@ -122,6 +127,9 @@ func DefaultConfig() *Config {
 			Process: ProcessCollectorConfig{
 				Enabled: true,
 				TopN:    10,
+			},
+			Container: ContainerCollectorConfig{
+				Enabled: true,
 			},
 		},
 		Server: ServerConfig{
