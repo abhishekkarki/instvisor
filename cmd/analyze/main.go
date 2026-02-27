@@ -54,8 +54,19 @@ func main() {
 		log.Fatalf("Analysis failed: %v", err)
 	}
 
+	// Analyze period WITH containers
+    analysis, containerBreakdown, err := an.AnalyzePeriodWithContainers(period)
+    if err != nil {
+        log.Fatalf("Analysis failed: %v", err)
+    }
+
 	// Print analysis results
 	printAnalysis(analysis)
+
+	// Print container breakdown if available
+    if containerBreakdown != nil && len(containerBreakdown.Containers) > 0 {
+        printContainerBreakdown(containerBreakdown)
+    }
 
 	// Generate recommendation
 	rec := analyzer.NewRecommender(an)
@@ -86,6 +97,14 @@ func main() {
 
 	// Print recommendation
 	printRecommendation(recommendation, cpuCores, memGB)
+
+	// Print container insights
+    if containerBreakdown != nil {
+        insights := rec.GenerateContainerInsights(containerBreakdown)
+        if len(insights) > 0 {
+            printContainerInsights(insights)
+        }
+    }
 }
 
 func printAnalysis(analysis *analyzer.ResourceAnalysis) {
@@ -195,4 +214,58 @@ func printRecommendation(rec *analyzer.InstanceRecommendation, currentCPU int, c
 			fmt.Printf("  %s: %v\n", provider, instances)
 		}
 	}
+}
+
+func printContainerBreakdown(breakdown *analyzer.ContainerBreakdown) {
+    fmt.Println("=== CONTAINER RESOURCE BREAKDOWN ===")
+    fmt.Println()
+    
+    if len(breakdown.TopCPU) == 0 {
+        fmt.Println("No container metrics available")
+        return
+    }
+    
+    fmt.Println("Top CPU Consumers:")
+    for i, container := range breakdown.TopCPU {
+        fmt.Printf("  %d. %-30s  CPU: %5.1f%%  (%.0f%% of host)\n",
+            i+1,
+            truncate(container.ContainerName, 30),
+            container.CPUP95,
+            container.PercentOfHostCPU,
+        )
+    }
+    fmt.Println()
+    
+    if len(breakdown.TopMemory) > 0 {
+        fmt.Println("Top Memory Consumers:")
+        for i, container := range breakdown.TopMemory {
+            fmt.Printf("  %d. %-30s  Mem: %5.1f GB  (%.0f%% of host)\n",
+                i+1,
+                truncate(container.ContainerName, 30),
+                container.MemoryP95,
+                container.PercentOfHostMemory,
+            )
+        }
+        fmt.Println()
+    }
+}
+
+func printContainerInsights(insights []string) {
+    if len(insights) == 0 {
+        return
+    }
+    
+    fmt.Println("=== CONTAINER INSIGHTS ===")
+    fmt.Println()
+    for _, insight := range insights {
+        fmt.Println(insight)
+    }
+    fmt.Println()
+}
+
+func truncate(s string, maxLen int) string {
+    if len(s) <= maxLen {
+        return s
+    }
+    return s[:maxLen-3] + "..."
 }

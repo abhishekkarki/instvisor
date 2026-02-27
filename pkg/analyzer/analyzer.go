@@ -102,6 +102,35 @@ func (a *Analyzer) analyzeMetric(metricName string, start, end time.Time, labels
 	return stats, nil
 }
 
+// AnalyzePeriodWithContainers analyzes both host and container metrics
+func (a *Analyzer) AnalyzePeriodWithContainers(period time.Duration) (*ResourceAnalysis, *ContainerBreakdown, error) {
+    // First, do standard host analysis
+    hostAnalysis, err := a.AnalyzePeriod(period)
+    if err != nil {
+        return nil, nil, err
+    }
+    
+    // Then analyze containers
+    containerAnalyzer := NewContainerAnalyzer(a.storage)
+    
+    var hostCPUP95, hostMemP95 float64
+    if hostAnalysis.CPU != nil {
+        hostCPUP95 = hostAnalysis.CPU.P95
+    }
+    if hostAnalysis.Memory != nil {
+        hostMemP95 = hostAnalysis.Memory.P95
+    }
+    
+    containerBreakdown, err := containerAnalyzer.AnalyzeContainers(period, hostCPUP95, hostMemP95)
+    if err != nil {
+        // Don't fail entire analysis if containers fail
+        // Just return host analysis without container data
+        return hostAnalysis, nil, nil
+    }
+    
+    return hostAnalysis, containerBreakdown, nil
+}
+
 // detectPattern identifies the workload pattern
 func (a *Analyzer) detectPattern(cpuStats *ResourceStats) (WorkloadPattern, float64) {
 	if cpuStats == nil {
