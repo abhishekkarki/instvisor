@@ -20,72 +20,85 @@ var (
 )
 
 func main() {
-	flag.Parse()
+    flag.Parse()
 
-	// Detect system info
-	sysInfo, err := analyzer.DetectSystemInfo()
-	if err != nil {
-		log.Printf("Warning: Could not detect system info: %v", err)
-	} else {
-		fmt.Printf("Current System: %s\n\n", sysInfo)
-	}
+    // Detect system info
+    sysInfo, err := analyzer.DetectSystemInfo()
+    if err != nil {
+        log.Printf("Warning: Could not detect system info: %v", err)
+    } else {
+        fmt.Printf("Current System: %s\n\n", sysInfo)
+    }
 
-	// Open storage
-	store, err := storage.NewSQLiteStorage(*dbPath)
-	if err != nil {
-		log.Fatalf("Failed to open database: %v", err)
-	}
+    // Open storage
+    store, err := storage.NewSQLiteStorage(*dbPath)
+    if err != nil {
+        log.Fatalf("Failed to open database: %v", err)
+    }
+    defer func() {
+        if err := store.Close(); err != nil {
+            log.Printf("Failed to close storage: %v", err)
+        }
+    }()
 
-	defer func() {
-		if err := store.Close(); err != nil {
-			log.Printf("Failed to close storage: %v", err)
-		}
-	}()
+    // Create analyzer
+    an := analyzer.NewAnalyzer(store)
 
-	// Create analyzer
-	an := analyzer.NewAnalyzer(store)
+    // Analyze period
+    period := time.Duration(*days) * 24 * time.Hour
+    fmt.Printf("Analyzing metrics from the past %d days...\n\n", *days)
 
-	// Analyze period
-	period := time.Duration(*days) * 24 * time.Hour
-	fmt.Printf("Analyzing metrics from the past %d days...\n\n", *days)
+    // Get analysis WITH containers
+    analysis, containerBreakdown, err := an.AnalyzePeriodWithContainers(period)
+    if err != nil {
+        log.Fatalf("Analysis failed: %v", err)
+    }
 
-	analysis, err := an.AnalyzePeriod(period)
-	if err != nil {
-		log.Fatalf("Analysis failed: %v", err)
-	}
+    // Print analysis results
+    printAnalysis(analysis)
 
-	// Print analysis results
-	printAnalysis(analysis)
+    // Print container breakdown if available
+    if containerBreakdown != nil && len(containerBreakdown.Containers) > 0 {
+        printContainerBreakdown(containerBreakdown)
+    }
 
-	// Generate recommendation
-	rec := analyzer.NewRecommender(an)
+    // Generate recommendation
+    rec := analyzer.NewRecommender(an)
 
-	// Use detected values if not provided
-	cpuCores := *currentCPU
-	memGB := *currentMem
+    // Use detected values if not provided
+    cpuCores := *currentCPU
+    memGB := *currentMem
 
-	if cpuCores == 0 && sysInfo != nil {
-		cpuCores = sysInfo.CPUCores
-	}
-	if memGB == 0 && sysInfo != nil {
-		memGB = sysInfo.MemoryGB
-	}
+    if cpuCores == 0 && sysInfo != nil {
+        cpuCores = sysInfo.CPUCores
+    }
+    if memGB == 0 && sysInfo != nil {
+        memGB = sysInfo.MemoryGB
+    }
 
-	config := &analyzer.RecommendationConfig{
-		CPUHeadroomPercent:    *headroomCPU,
-		MemoryHeadroomPercent: *headroomMem,
-		UseP95:                true,
-		CurrentCPUCores:       cpuCores,
-		CurrentMemoryGB:       memGB,
-	}
+    config := &analyzer.RecommendationConfig{
+        CPUHeadroomPercent:    *headroomCPU,
+        MemoryHeadroomPercent: *headroomMem,
+        UseP95:                true,
+        CurrentCPUCores:       cpuCores,
+        CurrentMemoryGB:       memGB,
+    }
 
-	recommendation, err := rec.GenerateRecommendation(analysis, config)
-	if err != nil {
-		log.Fatalf("Failed to generate recommendation: %v", err)
-	}
+    recommendation, err := rec.GenerateRecommendation(analysis, config)
+    if err != nil {
+        log.Fatalf("Failed to generate recommendation: %v", err)
+    }
 
-	// Print recommendation
-	printRecommendation(recommendation, cpuCores, memGB)
+    // Print recommendation
+    printRecommendation(recommendation, cpuCores, memGB)
+
+    // Print container insights if available
+    if containerBreakdown != nil {
+        insights := rec.GenerateContainerInsights(containerBreakdown)
+        if len(insights) > 0 {
+            printContainerInsights(insights)
+        }
+    }
 }
 
 func printAnalysis(analysis *analyzer.ResourceAnalysis) {
@@ -195,4 +208,58 @@ func printRecommendation(rec *analyzer.InstanceRecommendation, currentCPU int, c
 			fmt.Printf("  %s: %v\n", provider, instances)
 		}
 	}
+}
+
+func printContainerBreakdown(breakdown *analyzer.ContainerBreakdown) {
+    fmt.Println("=== CONTAINER RESOURCE BREAKDOWN ===")
+    fmt.Println()
+    
+    if len(breakdown.TopCPU) == 0 {
+        fmt.Println("No container metrics available")
+        return
+    }
+    
+    fmt.Println("Top CPU Consumers:")
+    for i, container := range breakdown.TopCPU {
+        fmt.Printf("  %d. %-30s  CPU: %5.1f%%  (%.0f%% of host)\n",
+            i+1,
+            truncate(container.ContainerName, 30),
+            container.CPUP95,
+            container.PercentOfHostCPU,
+        )
+    }
+    fmt.Println()
+    
+    if len(breakdown.TopMemory) > 0 {
+        fmt.Println("Top Memory Consumers:")
+        for i, container := range breakdown.TopMemory {
+            fmt.Printf("  %d. %-30s  Mem: %5.1f GB  (%.0f%% of host)\n",
+                i+1,
+                truncate(container.ContainerName, 30),
+                container.MemoryP95,
+                container.PercentOfHostMemory,
+            )
+        }
+        fmt.Println()
+    }
+}
+
+func printContainerInsights(insights []string) {
+    if len(insights) == 0 {
+        return
+    }
+    
+    fmt.Println("=== CONTAINER INSIGHTS ===")
+    fmt.Println()
+    for _, insight := range insights {
+        fmt.Println(insight)
+    }
+    fmt.Println()
+}
+
+func truncate(s string, maxLen int) string {
+    if len(s) <= maxLen {
+        return s
+    }
+    return s[:maxLen-3] + "..."
 }

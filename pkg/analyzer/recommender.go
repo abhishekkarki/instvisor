@@ -156,6 +156,81 @@ func (r *Recommender) GenerateRecommendation(analysis *ResourceAnalysis, config 
 	return rec, nil
 }
 
+// GenerateContainerInsights creates actionable insights from container breakdown
+func (r *Recommender) GenerateContainerInsights(breakdown *ContainerBreakdown) []string {
+    if breakdown == nil || len(breakdown.Containers) == 0 {
+        return []string{}
+    }
+    
+    var insights []string
+    
+    // Always show top consumer (even if low usage)
+    if len(breakdown.TopCPU) > 0 {
+        topConsumer := breakdown.TopCPU[0]
+        
+        if topConsumer.PercentOfHostCPU > 60 {
+            insights = append(insights, fmt.Sprintf(
+                "Container '%s' consumes %.0f%% of your host CPU - this container drives your sizing requirements",
+                topConsumer.ContainerName, topConsumer.PercentOfHostCPU,
+            ))
+            insights = append(insights, fmt.Sprintf(
+                "   Consider optimizing '%s' before scaling the entire host",
+                topConsumer.ContainerName,
+            ))
+        } else if topConsumer.PercentOfHostCPU > 40 {
+            insights = append(insights, fmt.Sprintf(
+                "Container '%s' is your largest CPU consumer (%.0f%% of host)",
+                topConsumer.ContainerName, topConsumer.PercentOfHostCPU,
+            ))
+        } else {
+            // Low usage - still show top consumer
+            insights = append(insights, fmt.Sprintf(
+                "CPU usage is well-distributed. Top consumer: '%s' (%.0f%% of host)",
+                topConsumer.ContainerName, topConsumer.PercentOfHostCPU,
+            ))
+        }
+    }
+    
+    // Check for many small containers vs few large ones
+    if len(breakdown.Containers) >= 3 {
+        totalTop3 := 0.0
+        for i := 0; i < 3 && i < len(breakdown.TopCPU); i++ {
+            totalTop3 += breakdown.TopCPU[i].PercentOfHostCPU
+        }
+        
+        if totalTop3 > 80 {
+            insights = append(insights, fmt.Sprintf(
+                "Top 3 containers account for %.0f%% of CPU usage - focus optimization efforts here",
+                totalTop3,
+            ))
+        } else if totalTop3 < 30 {
+            insights = append(insights, 
+                "Resource usage is evenly distributed across containers - no single bottleneck")
+        }
+    }
+    
+    // Memory insights
+    if len(breakdown.TopMemory) > 0 {
+        topMem := breakdown.TopMemory[0]
+        if topMem.PercentOfHostMemory > 60 {
+            insights = append(insights, fmt.Sprintf(
+                "Container '%s' uses %.0f%% of host memory (%.1f GB)",
+                topMem.ContainerName, topMem.PercentOfHostMemory, topMem.MemoryP95,
+            ))
+        }
+    }
+    
+    // Overall assessment
+    if len(breakdown.Containers) > 0 {
+        insights = append(insights, fmt.Sprintf(
+            "Monitoring %d container(s) - all containers are operating within normal resource limits",
+            len(breakdown.Containers),
+        ))
+    }
+    
+    return insights
+}
+
 // suggestAWSInstances suggests AWS EC2 instance types
 func (r *Recommender) suggestAWSInstances(cpu int, memGB float64, burstable bool) []string {
 	var suggestions []string

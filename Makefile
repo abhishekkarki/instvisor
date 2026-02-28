@@ -46,7 +46,8 @@ coverage: ## Generate coverage report
 
 lint: ## Run linter
 	@echo "Running linter..."
-	@golangci-lint run ./...
+	@which golangci-lint > /dev/null || (echo "golangci-lint not installed" && exit 1)
+	@golangci-lint run --timeout=10m ./...
 
 fmt: ## Format code
 	@echo "Formatting code..."
