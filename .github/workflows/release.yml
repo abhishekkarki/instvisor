@@ -10,21 +10,67 @@ permissions:
   packages: write
 
 jobs:
-  build-binaries:
-    name: Build Release Binaries
+  build-linux-binaries:
+    name: Build Linux Binaries
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          - goos: darwin
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential sqlite3 libsqlite3-dev
+
+      - name: Install cross-compilation tools for ARM64
+        if: matrix.arch == 'arm64'
+        run: |
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CC=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: Build
+        env:
+          CGO_ENABLED: 1
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          make build-all
+          
+          # Create release package
+          mkdir -p release
+          tar -czf release/instvisor-linux-${{ matrix.arch }}.tar.gz \
+            build/instvisor-agent \
+            build/instvisor-analyze \
+            configs/ \
+            scripts/ \
+            deployments/ \
+            README.md \
+            LICENSE
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: instvisor-linux-${{ matrix.arch }}
+          path: release/instvisor-linux-${{ matrix.arch }}.tar.gz
+
+  build-macos-binaries:
+    name: Build macOS Binaries
+    runs-on: macos-latest  # Using macOS runner for macOS builds!
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -40,30 +86,30 @@ jobs:
 
       - name: Build
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 1
+          GOOS: darwin
+          GOARCH: ${{ matrix.arch }}
         run: |
-          # Install cross-compilation tools for ARM
-          if [ "${{ matrix.goarch }}" = "arm64" ] && [ "${{ matrix.goos }}" = "linux" ]; then
-            sudo apt-get update
-            sudo apt-get install -y gcc-aarch64-linux-gnu
-            export CC=aarch64-linux-gnu-gcc
-          fi
+          # macOS has SQLite by default, but ensure it's available
+          brew list sqlite || brew install sqlite
           
           make build-all
           
           # Create release package
           mkdir -p release
-          tar -czf release/instvisor-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz \
-            -C build instvisor-agent instvisor-analyze \
-            -C .. configs scripts deployments README.md LICENSE
+          tar -czf release/instvisor-darwin-${{ matrix.arch }}.tar.gz \
+            build/instvisor-agent \
+            build/instvisor-analyze \
+            configs/ \
+            scripts/ \
+            README.md \
+            LICENSE
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: instvisor-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: release/instvisor-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
+          name: instvisor-darwin-${{ matrix.arch }}
+          path: release/instvisor-darwin-${{ matrix.arch }}.tar.gz
 
   build-docker:
     name: Build and Push Docker Image
@@ -95,12 +141,19 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
+      - name: Get build time
+        id: time
+        run: echo "BUILD_TIME=$(date -u '+%Y-%m-%d_%H:%M:%S')" >> $GITHUB_OUTPUT
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          build-args: |
+            VERSION=${{ steps.version.outputs.VERSION }}
+            BUILD_TIME=${{ steps.time.outputs.BUILD_TIME }}
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/instvisor:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/instvisor:${{ steps.version.outputs.VERSION }}
@@ -111,7 +164,7 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: [build-binaries, build-docker]
+    needs: [build-linux-binaries, build-macos-binaries, build-docker]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -122,12 +175,78 @@ jobs:
         with:
           path: release-artifacts
 
+      - name: Move artifacts to single directory
+        run: |
+          mkdir -p release
+          find release-artifacts -name "*.tar.gz" -exec mv {} release/ \;
+
+      - name: Display artifacts
+        run: ls -lh release/
+
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: release-artifacts/**/*.tar.gz
+          files: release/*.tar.gz
           draft: false
           prerelease: false
           generate_release_notes: true
+          body: |
+            ## Instvisor ${{ steps.version.outputs.VERSION }}
+            
+            ### Installation
+            
+            #### Docker (Recommended)
+            ```bash
+            docker run -d \
+              --name instvisor \
+              --privileged \
+              --pid=host \
+              -v /:/rootfs:ro \
+              -v /sys:/sys:ro \
+              -v instvisor-data:/var/lib/instvisor \
+              ${{ secrets.DOCKERHUB_USERNAME }}/instvisor:${{ steps.version.outputs.VERSION }}
+            ```
+            
+            #### Binary Installation
+            
+            **Linux (amd64)**
+            ```bash
+            wget https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/instvisor-linux-amd64.tar.gz
+            tar -xzf instvisor-linux-amd64.tar.gz
+            sudo ./scripts/install.sh
+            ```
+            
+            **Linux (arm64)**
+            ```bash
+            wget https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/instvisor-linux-arm64.tar.gz
+            tar -xzf instvisor-linux-arm64.tar.gz
+            sudo ./scripts/install.sh
+            ```
+            
+            **macOS (Intel)**
+            ```bash
+            wget https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/instvisor-darwin-amd64.tar.gz
+            tar -xzf instvisor-darwin-amd64.tar.gz
+            sudo ./scripts/install.sh
+            ```
+            
+            **macOS (Apple Silicon)**
+            ```bash
+            wget https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.VERSION }}/instvisor-darwin-arm64.tar.gz
+            tar -xzf instvisor-darwin-arm64.tar.gz
+            sudo ./scripts/install.sh
+            ```
+            
+            ### Supported Platforms
+            - Linux: amd64, arm64
+            - macOS: amd64 (Intel), arm64 (Apple Silicon)
+            
+            ### Docker Images
+            - Docker Hub: `${{ secrets.DOCKERHUB_USERNAME }}/instvisor:${{ steps.version.outputs.VERSION }}`
+            - GitHub: `ghcr.io/${{ github.repository_owner }}/instvisor:${{ steps.version.outputs.VERSION }}`
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
