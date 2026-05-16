@@ -1,39 +1,45 @@
 # Instvisor
 
+<img src="images/instvisor-logo.png" width="95%">
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Report Card](https://goreportcard.com/badge/github.com/abhishekkarki/instvisor)](https://goreportcard.com/report/github.com/abhishekkarki/instvisor)
+[![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)](https://golang.org/dl/)
+[![GitHub Release](https://img.shields.io/github/v/release/abhishekkarki/instvisor)](https://github.com/abhishekkarki/instvisor/releases)
 
-**Instvisor** is a lightweight system resource monitoring agent that analyzes machine performance over time and provides optimal instance sizing recommendations based on actual usage patterns.
+**Instvisor** is a lightweight Linux host monitoring agent that collects resource metrics over time and generates right-sizing recommendations based on actual usage — helping you reduce cloud costs by 30–70%.
 
-Similar to cAdvisor for containers, Instvisor monitors your entire host and helps you right-size your infrastructure, potentially saving 30-70% on cloud costs.
+---
 
 ## Features
 
-- **Comprehensive Metrics Collection**: CPU, Memory, Disk I/O, Network
-- **Statistical Analysis**: P50/P90/P95/P99 percentiles, workload pattern detection
-- **Cost Optimization**: Instance sizing recommendations for AWS, OTC, Azure
-- **Low Overhead**: <50MB RAM, <1% CPU usage
-- **SQLite Storage**: Efficient time-series data with configurable retention
-- **Container Support**: Run as systemd service or Docker container
-- **Prometheus Ready**: Export metrics to existing monitoring stack (coming soon)
+| | |
+|---|---|
+| **Comprehensive Collection** | CPU, memory, disk I/O, network, and container metrics |
+| **Statistical Analysis** | P50 / P90 / P95 / P99 percentiles, standard deviation, workload pattern detection |
+| **Instance Recommendations** | Optimal vCPU and RAM sizing for AWS and OTC instance families |
+| **Container Visibility** | Per-container CPU and memory breakdown via cgroup v2 — no Docker SDK required |
+| **Low Overhead** | < 50 MB RAM, < 1% CPU |
+| **Persistent Storage** | SQLite with WAL mode, configurable retention (default: 90 days) |
+| **Flexible Deployment** | systemd service, Docker container, or standalone binary |
 
-## Quick Start
+---
 
-### Binary Installation
+## Installation
+
+### Binary (recommended)
+
 ```bash
-# Download latest release
 wget https://github.com/abhishekkarki/instvisor/releases/latest/download/instvisor-linux-amd64.tar.gz
-
-# Extract
 tar -xzf instvisor-linux-amd64.tar.gz
-
-# Install
 sudo ./install.sh
 ```
 
+Binaries are available for `linux/amd64` and `linux/arm64`.
+
 ### Docker
+
 ```bash
-# Run agent
 docker run -d \
   --name instvisor \
   --privileged \
@@ -44,49 +50,49 @@ docker run -d \
   -v /var/lib/docker:/var/lib/docker:ro \
   -v instvisor-data:/var/lib/instvisor \
   abhishekkarki/instvisor:latest
-
-# Analyze collected data
-docker exec instvisor instvisor-analyze
 ```
 
 ### From Source
+
+Requires Go 1.21+ and `CGO_ENABLED=1` (for SQLite).
+
 ```bash
-# Clone repository
 git clone https://github.com/abhishekkarki/instvisor.git
 cd instvisor
-
-# Build
-make build
-
-# Run
-sudo ./build/instvisor-agent
+make build-all
 ```
+
+---
 
 ## Usage
 
-### Start the Agent
+### 1. Start the agent
+
 ```bash
-# As systemd service
-sudo systemctl start instvisor
-sudo systemctl enable instvisor
+# As a systemd service
+sudo systemctl enable --now instvisor
 
 # Or run directly
 sudo instvisor-agent -config /etc/instvisor/agent.yaml
 ```
 
-### Analyze and Get Recommendations
+The agent collects metrics every 15 seconds by default and stores them in SQLite.
+
+### 2. Analyze and get recommendations
+
 ```bash
-# Analyze last 7 days
+# Analyze the last 7 days (default)
 sudo instvisor-analyze
 
-# Analyze specific period
+# Analyze a longer period
 sudo instvisor-analyze -days 30
 
-# With custom headroom
+# Adjust headroom margins
 sudo instvisor-analyze -days 7 -headroom-cpu 25 -headroom-mem 20
 ```
 
-### Example Output
+### Example output
+
 ```
 Current System: prod-server-01 - 8 vCPUs, 32.0 GB RAM (linux/amd64)
 
@@ -95,24 +101,25 @@ Analysis Period: 168h0m0s (7 days)
 Workload Pattern: steady_state (confidence: 90%)
 
 CPU Usage:
-  Mean:   25.3%
-  P95:    42.1%
-  Max:    68.0%
+  Mean:    25.3%
+  P95:     42.1%
+  Max:     68.0%
+  StdDev:  8.4%
 
 Memory Usage:
-  Mean:   45.2%
-  P95:    52.3%
-  Max:    58.0%
+  Mean:    45.2%
+  P95:     52.3%
+  Max:     58.0%
 
 === INSTANCE SIZING RECOMMENDATION ===
 
 Current Configuration:
-  vCPUs:  8 cores
-  Memory: 32.0 GB
+  vCPUs:   8 cores
+  Memory:  32.0 GB
 
 Recommended Configuration:
-  vCPUs:  4 cores (-4 cores)
-  Memory: 16.0 GB (-16.0 GB)
+  vCPUs:   4 cores  (-4 cores)
+  Memory:  16.0 GB  (-16.0 GB)
 
 Estimated Resource Savings: 50%
 
@@ -121,13 +128,16 @@ Suggested Instance Types:
   OTC: [s3.xlarge.4, c3.xlarge.4]
 ```
 
+---
+
 ## Configuration
 
-Edit `/etc/instvisor/agent.yaml`:
+Default config is at `/etc/instvisor/agent.yaml`. All fields are optional — sensible defaults apply.
+
 ```yaml
 collection:
-  interval: 15s          # Collection frequency
-  retention_days: 90     # Data retention period
+  interval: 15s          # How often metrics are collected
+  retention_days: 90     # How long metrics are kept
 
 storage:
   path: /var/lib/instvisor/metrics.db
@@ -135,107 +145,100 @@ storage:
 collectors:
   cpu:
     enabled: true
-    per_core: true
+    per_core: true        # Also collect per-core breakdown
   memory:
     enabled: true
     include_swap: true
   disk:
     enabled: true
-    devices: []          # Empty = all devices
+    devices: []           # Empty = monitor all block devices
   network:
     enabled: true
-    interfaces: []       # Empty = all interfaces
+    interfaces: []        # Empty = monitor all interfaces (except loopback)
+  container:
+    enabled: true         # Reads from cgroup v2; requires --privileged in Docker
 ```
+
+---
 
 ## Architecture
+
 ```
-┌─────────────────────────────────────┐
-│   Collectors (CPU, Mem, Disk, Net)  │
-│              ↓                      │
-│        Collector Manager            │
-│              ↓                      │
-│       SQLite Storage                │
-│              ↓                      │
-│        Analysis Engine              │
-│              ↓                      │
-│    Recommendations + Reports        │
-└─────────────────────────────────────┘
-```
+  ┌────────────────────────────────────────────────────┐
+  │                 instvisor-agent                    │
+  │                                                    │
+  │  ┌─────────┐ ┌─────────┐ ┌──────┐ ┌─────────────┐  │
+  │  │  CPU    │ │ Memory  │ │ Disk │ │   Network   │  │
+  │  │Collector│ │Collector│ │Coll. │ │  Collector  │  │
+  │  └───┬─────┘ └───┬─────┘ └──┬───┘ └──────┬──────┘  │
+  │      │           │          │            │         │
+  │      └───────────┴────┬─────┘            │         │
+  │                       │    ┌─────────────┘         │
+  │                       v    v                       │
+  │            ┌───────────────────┐   vv              │
+  │            │ Collector Manager │  (goroutine/col)  │
+  │            └────────┬──────────┘                   │
+  │                     │                              │
+  │                     v                              │
+  │            ┌──────────────────┐                    │
+  │            │  SQLite Storage  │  (WAL, 90 days)    │
+  │            └──────────────────┘                    │
+  └────────────────────────────────────────────────────┘
 
-## Contributing
-
-We love contributions! Please read our [Contributing Guide](CONTRIBUTING.md) to get started.
-
-### Development Setup
-```bash
-# Clone repository
-git clone https://github.com/abhishekkarki/instvisor.git
-cd instvisor
-
-# Install dependencies
-go mod download
-
-# Run tests
-make test
-
-# Build
-make build
-
-# Run locally
-make dev
+  ┌────────────────────────────────────────────────────┐
+  │                instvisor-analyze                   │
+  │                                                    │
+  │   SQLite Storage → Analyzer → Recommender          │
+  │         (percentiles, pattern detection)           │
+  │                     │                              │
+  │                     v                              │
+  │        Instance sizing report + cloud              │
+  │        provider suggestions (AWS / OTC)            │
+  └────────────────────────────────────────────────────┘
 ```
 
-### Running Tests
-```bash
-# Unit tests
-go test ./...
-
-# With coverage
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out
-```
+---
 
 ## Roadmap
 
-- [x] Core metrics collection (CPU, Memory, Disk, Network)
-- [x] Statistical analysis and recommendations
-- [x] Multi-cloud instance type suggestions
+- [x] Core metrics collection (CPU, memory, disk, network)
+- [x] Statistical analysis — percentiles, workload pattern detection
+- [x] Multi-cloud instance type suggestions (AWS, OTC)
+- [x] Container metrics via cgroup v2
 - [ ] Prometheus metrics exporter
-- [ ] Container/cgroup v2 support
 - [ ] Process-level metrics
 - [ ] Web dashboard
 - [ ] Kubernetes pod resource recommendations
 - [ ] Multi-host fleet analysis
-- [ ] Cost estimation with cloud pricing APIs
+- [ ] Cost estimation with live cloud pricing APIs
 - [ ] Alerting system
 
-## FAQ
+---
 
-**Q: How is this different from cAdvisor?**  
-A: cAdvisor monitors containers, Instvisor monitors entire hosts and provides sizing recommendations. They complement each other.
+## Contributing
 
-**Q: Does it work on ARM?**  
-A: Yes! We provide binaries for amd64 and arm64.
+Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
-**Q: How much data does it store?**  
-A: With default settings (15s interval, 90 days retention), approximately 2-5GB per host.
+```bash
+# Set up
+git clone https://github.com/abhishekkarki/instvisor.git
+cd instvisor
+go mod download
 
-**Q: Can I export metrics to Prometheus?**  
-A: Prometheus exporter is planned for v0.2.0.
+# Build
+make build-all
+
+# Test
+make test
+
+# Lint
+make lint
+```
+
+Found a bug or have a question? Open an [issue](https://github.com/abhishekkarki/instvisor/issues) or start a [discussion](https://github.com/abhishekkarki/instvisor/discussions).
+
+---
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
-
-## Support
-
-- 📖 [Documentation](https://github.com/abhishekkarki/instvisor/wiki)
-- 🐛 [Issue Tracker](https://github.com/abhishekkarki/instvisor/issues)
-- 💬 [Discussions](https://github.com/abhishekkarki/instvisor/discussions)
-
-## Acknowledgments
-
-Inspired by:
-- [cAdvisor](https://github.com/google/cadvisor)
-- [node_exporter](https://github.com/prometheus/node_exporter)
-- [Kubernetes Vertical Pod Autoscaler](https://github.com/kubernetes/autoscaler)
+[MIT](LICENSE) © Abhishek Karki
